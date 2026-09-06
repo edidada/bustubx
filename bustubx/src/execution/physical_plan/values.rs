@@ -29,6 +29,11 @@ impl PhysicalValues {
     }
 }
 impl VolcanoExecutor for PhysicalValues {
+    fn init(&self, _context: &mut ExecutionContext) -> BustubxResult<()> {
+        self.cursor.store(0, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+
     fn next(&self, _context: &mut ExecutionContext) -> BustubxResult<Option<Tuple>> {
         let cursor = self
             .cursor

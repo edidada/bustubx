@@ -1,6 +1,36 @@
 use bustubx::Database;
 
 #[test]
+fn parallel_join_handles_large_right_side_empty_sides_and_no_matches() {
+    let mut db = Database::new_temp().unwrap();
+    db.run("create table l (a int)").unwrap();
+    db.run("create table r (b int)").unwrap();
+    db.run("create table empty_table (c int)").unwrap();
+    db.run("insert into l values (1100), (1100), (1200)")
+        .unwrap();
+    let rows = (0..1300)
+        .map(|i| format!("({i})"))
+        .collect::<Vec<_>>()
+        .join(",");
+    db.run(&format!("insert into r values {rows}")).unwrap();
+    for sql in [
+        "select a, b from l inner join r on a = b",
+        "select a, b from l inner join r on a < b limit 12 offset 5",
+        "select a, b from l cross join r",
+        "select a, b from l inner join r on a < 0",
+        "select a, c from l cross join empty_table",
+        "select c, b from empty_table cross join r",
+    ] {
+        db.set_parallelism(1).unwrap();
+        let expected = db.run(sql).unwrap();
+        for workers in [2, 4] {
+            db.set_parallelism(workers).unwrap();
+            assert_eq!(db.run(sql).unwrap(), expected, "{sql}");
+        }
+    }
+}
+
+#[test]
 fn parallel_scan_covers_multiple_page_batches_and_reopen() {
     let dir = tempfile::TempDir::new().unwrap();
     let path = dir.path().join("scan.db");

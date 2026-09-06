@@ -17,7 +17,8 @@
   - [x] [Demand-driven LIMIT and early termination](docs/02-demand-driven-limit.md)
   - [x] [Ordered, bounded parallel filtering](docs/03-parallel-filter.md)
   - [x] [Parallel table scan decoding](docs/05-parallel-table-scan.md)
-  - [ ] Parallel joins and aggregation
+  - [x] [Parallel INNER/CROSS joins](docs/06-parallel-nested-loop-join.md)
+  - [ ] Parallel aggregation
 - [ ] Two Phase Locking
 - [ ] Multi-Version Concurrency Control
 - [ ] Crash Recovery

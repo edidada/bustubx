@@ -153,13 +153,16 @@ impl PhysicalPlanner<'_> {
             }) => {
                 let left_physical_plan = self.build_plan((*left).clone());
                 let right_physical_plan = self.build_plan((*right).clone());
-                PhysicalPlan::NestedLoopJoin(PhysicalNestedLoopJoin::new(
-                    *join_type,
-                    condition.clone(),
-                    Arc::new(left_physical_plan),
-                    Arc::new(right_physical_plan),
-                    schema.clone(),
-                ))
+                PhysicalPlan::NestedLoopJoin(
+                    PhysicalNestedLoopJoin::new(
+                        *join_type,
+                        condition.clone(),
+                        Arc::new(left_physical_plan),
+                        Arc::new(right_physical_plan),
+                        schema.clone(),
+                    )
+                    .with_parallelism(self.parallelism),
+                )
             }
             LogicalPlan::Sort(Sort {
                 order_by: expr,
