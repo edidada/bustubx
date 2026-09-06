@@ -52,7 +52,7 @@ impl TableHeap {
     /// An `Option` containing the `Rid` of the inserted tuple if successful, otherwise `None`.
     pub fn insert_tuple(&self, meta: &TupleMeta, tuple: &Tuple) -> BustubxResult<RecordId> {
         let mut last_page_id = self.last_page_id.load(Ordering::SeqCst);
-        let (last_page, mut last_table_page) = self
+        let (mut last_page, mut last_table_page) = self
             .buffer_pool
             .fetch_table_page(last_page_id, self.schema.clone())?;
 
@@ -90,6 +90,7 @@ impl TableHeap {
                 )));
 
             // Update last_page_id.
+            last_page = next_page;
             last_page_id = next_page_id;
             last_table_page = next_table_page;
             self.last_page_id.store(last_page_id, Ordering::SeqCst);
@@ -315,6 +316,58 @@ mod tests {
         buffer::BufferPoolManager,
         storage::{table_heap::TableHeap, DiskManager, Tuple},
     };
+
+    #[test]
+    fn multiple_pages_survive_eviction_and_reopen() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("pages.db");
+        let schema = Arc::new(Schema::new(vec![Column::new("a", DataType::Int32, false)]));
+        let pool = Arc::new(BufferPoolManager::new(
+            2,
+            Arc::new(DiskManager::try_new(&path).unwrap()),
+        ));
+        let heap = Arc::new(TableHeap::try_new(schema.clone(), pool.clone()).unwrap());
+        let mut rids = Vec::new();
+        for i in 0..500i32 {
+            rids.push(
+                heap.insert_tuple(
+                    &EMPTY_TUPLE_META,
+                    &Tuple::new(schema.clone(), vec![i.into()]),
+                )
+                .unwrap(),
+            );
+        }
+        assert_ne!(rids[0].page_id, rids[499].page_id);
+        for (i, rid) in rids.iter().enumerate() {
+            assert_eq!(heap.tuple(*rid).unwrap().data, vec![(i as i32).into()]);
+        }
+        let mut iterator = TableIterator::new(heap.clone(), ..);
+        for i in 0..500i32 {
+            assert_eq!(iterator.next().unwrap().unwrap().1.data, vec![i.into()]);
+        }
+        assert!(iterator.next().unwrap().is_none());
+        pool.flush_all_pages().unwrap();
+        let first = heap.first_page_id.load(std::sync::atomic::Ordering::SeqCst);
+        let last = heap.last_page_id.load(std::sync::atomic::Ordering::SeqCst);
+        drop(iterator);
+        drop(heap);
+        drop(pool);
+        let pool = Arc::new(BufferPoolManager::new(
+            2,
+            Arc::new(DiskManager::try_new(path).unwrap()),
+        ));
+        let heap = Arc::new(TableHeap {
+            schema,
+            buffer_pool: pool,
+            first_page_id: first.into(),
+            last_page_id: last.into(),
+        });
+        let mut iterator = TableIterator::new(heap, ..);
+        for i in 0..500i32 {
+            assert_eq!(iterator.next().unwrap().unwrap().1.data, vec![i.into()]);
+        }
+        assert!(iterator.next().unwrap().is_none());
+    }
 
     #[test]
     pub fn test_table_heap_update_tuple_meta() {
