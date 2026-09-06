@@ -16,7 +16,8 @@
   - [x] [Ordered, bounded parallel projection](docs/01-parallel-projection.md)
   - [x] [Demand-driven LIMIT and early termination](docs/02-demand-driven-limit.md)
   - [x] [Ordered, bounded parallel filtering](docs/03-parallel-filter.md)
-  - [ ] Parallel scans, joins and aggregation
+  - [x] [Parallel table scan decoding](docs/05-parallel-table-scan.md)
+  - [ ] Parallel joins and aggregation
 - [ ] Two Phase Locking
 - [ ] Multi-Version Concurrency Control
 - [ ] Crash Recovery
@@ -29,8 +30,8 @@ P.S. See [here](tests/sqllogictest/slt) to know which sql statements are support
 
 
 ## Get started
-Read queries can opt into parallel projection and filtering using `db.set_parallelism(4)?` (1–64
-workers; default: 1). Results preserve input order. Scans and writes remain serial;
+Read queries can opt into parallel projection, filtering and table scan decoding using `db.set_parallelism(4)?` (1–64
+workers; default: 1). Results preserve input order. Page I/O, index scans and writes remain serial;
 small queries may be faster with the default. See the [projection design](docs/01-parallel-projection.md)
 and [filter design](docs/03-parallel-filter.md)
 for batching, error handling and current limitations.

@@ -120,16 +120,16 @@ impl PhysicalPlanner<'_> {
                             ..,
                         ))
                     } else {
-                        PhysicalPlan::SeqScan(PhysicalSeqScan::new(
-                            table_ref.clone(),
-                            table_schema.clone(),
-                        ))
+                        PhysicalPlan::SeqScan(
+                            PhysicalSeqScan::new(table_ref.clone(), table_schema.clone())
+                                .with_parallelism(self.parallelism),
+                        )
                     }
                 } else {
-                    PhysicalPlan::SeqScan(PhysicalSeqScan::new(
-                        table_ref.clone(),
-                        table_schema.clone(),
-                    ))
+                    PhysicalPlan::SeqScan(
+                        PhysicalSeqScan::new(table_ref.clone(), table_schema.clone())
+                            .with_parallelism(self.parallelism),
+                    )
                 }
             }
             LogicalPlan::Limit(Limit {
@@ -234,6 +234,7 @@ mod tests {
             let display = pretty_format_physical_plan(&plan);
             if sql.starts_with("select") {
                 assert!(display.contains("ParallelFilter: workers=4"), "{display}");
+                assert!(display.contains("ParallelSeqScan: workers=4"), "{display}");
                 assert!(display.contains("ParallelProject: workers=4"), "{display}");
             } else {
                 assert!(!display.contains("Parallel"), "{display}");

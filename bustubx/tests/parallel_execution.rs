@@ -1,6 +1,42 @@
 use bustubx::Database;
 
 #[test]
+fn parallel_scan_covers_multiple_page_batches_and_reopen() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("scan.db");
+    let mut db = Database::new_on_disk(path.to_str().unwrap()).unwrap();
+    db.run("create table pages (a int)").unwrap();
+    for start in (0..5000).step_by(100) {
+        let rows = (start..start + 100)
+            .map(|i| format!("({i})"))
+            .collect::<Vec<_>>()
+            .join(",");
+        db.run(&format!("insert into pages values {rows}")).unwrap();
+    }
+    let expected = db.run("select a from pages").unwrap();
+    assert_eq!(expected.len(), 5000);
+    for (i, row) in expected.iter().enumerate() {
+        assert_eq!(row.data[0].to_string(), i.to_string());
+    }
+    db.flush().unwrap();
+    drop(db);
+    let mut db = Database::new_on_disk(path.to_str().unwrap()).unwrap();
+    for workers in [2, 4] {
+        db.set_parallelism(workers).unwrap();
+        assert_eq!(db.run("select a from pages").unwrap(), expected);
+        let rows = db
+            .run("select a from pages where a >= 4900 order by a desc limit 3 offset 2")
+            .unwrap();
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.data[0].to_string())
+                .collect::<Vec<_>>(),
+            vec!["4997", "4996", "4995"]
+        );
+    }
+}
+
+#[test]
 fn parallel_sql_matches_serial_across_batches_and_operators() {
     let mut db = Database::new_temp().unwrap();
     db.run("create table l (a int)").unwrap();

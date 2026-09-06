@@ -70,8 +70,8 @@ impl Database {
         Ok(db)
     }
 
-    /// Set the number of projection/filter workers for subsequent read queries (1..=64).
-    /// The default is 1. Scans and writes remain serial.
+    /// Set the number of read execution workers (1..=64; default: 1).
+    /// Table scans decode pages in parallel; page I/O and writes remain serial.
     pub fn set_parallelism(&mut self, workers: usize) -> BustubxResult<()> {
         if !(1..=64).contains(&workers) {
             return Err(BustubxError::Execution(
