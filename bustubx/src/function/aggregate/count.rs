@@ -1,6 +1,6 @@
 use crate::common::ScalarValue;
-use crate::function::Accumulator;
-use crate::BustubxResult;
+use crate::function::{Accumulator, AccumulatorState};
+use crate::{BustubxError, BustubxResult};
 
 #[derive(Debug, Clone)]
 pub struct CountAccumulator {
@@ -14,9 +14,26 @@ impl CountAccumulator {
 }
 
 impl Accumulator for CountAccumulator {
+    fn state(&self) -> AccumulatorState {
+        AccumulatorState::Count(self.count)
+    }
+
+    fn merge(&mut self, state: AccumulatorState) -> BustubxResult<()> {
+        let AccumulatorState::Count(count) = state else {
+            return Err(BustubxError::Execution(
+                "Invalid COUNT partial state".into(),
+            ));
+        };
+        self.count = self
+            .count
+            .checked_add(count)
+            .ok_or_else(|| BustubxError::Execution("COUNT overflow".into()))?;
+        Ok(())
+    }
+
     fn update_value(&mut self, value: &ScalarValue) -> BustubxResult<()> {
         if !value.is_null() {
-            self.count += 1;
+            self.merge(AccumulatorState::Count(1))?;
         }
         Ok(())
     }

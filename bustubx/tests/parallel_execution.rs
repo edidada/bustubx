@@ -1,6 +1,54 @@
 use bustubx::Database;
 
 #[test]
+fn parallel_aggregation_merges_weighted_states_and_empty_input() {
+    let mut db = Database::new_temp().unwrap();
+    db.run("create table t (g int, a int)").unwrap();
+    for start in (0..2100).step_by(100) {
+        let rows = (start..start + 100)
+            .map(|i| {
+                format!(
+                    "({}, {})",
+                    i % 5,
+                    if i % 11 == 0 {
+                        "NULL".to_string()
+                    } else {
+                        (i % 16).to_string()
+                    }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        db.run(&format!("insert into t values {rows}")).unwrap();
+    }
+    for sql in [
+        "select count(a), avg(a) from t",
+        "select g, count(a), avg(a) from t group by g order by g",
+        "select count(a), avg(a) from t where g > 1",
+        "select count(a), avg(a) from t where g > 99",
+        "select g, count(a), avg(a) from t where g > 99 group by g",
+    ] {
+        db.set_parallelism(1).unwrap();
+        let expected = db.run(sql).unwrap();
+        for workers in [2, 4] {
+            db.set_parallelism(workers).unwrap();
+            assert_eq!(db.run(sql).unwrap(), expected, "{sql}");
+        }
+    }
+    let empty = db
+        .run("select count(a), avg(a) from t where g > 99")
+        .unwrap();
+    assert_eq!(empty.len(), 1);
+    assert_eq!(empty[0].data[0].to_string(), "0");
+    assert!(empty[0].data[1].is_null());
+    db.run("create table nulls (a int)").unwrap();
+    db.run("insert into nulls values (NULL), (NULL)").unwrap();
+    let rows = db.run("select count(a), avg(a) from nulls").unwrap();
+    assert_eq!(rows[0].data[0].to_string(), "0");
+    assert!(rows[0].data[1].is_null());
+}
+
+#[test]
 fn parallel_join_handles_large_right_side_empty_sides_and_no_matches() {
     let mut db = Database::new_temp().unwrap();
     db.run("create table l (a int)").unwrap();

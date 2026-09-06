@@ -12,13 +12,13 @@
 - [x] Table Heap
 - [x] System Metadata (information_schema)
 - [x] B+ Tree Index
-- [ ] Parallel Execution
+- [x] Parallel Execution (supported read operators; page I/O and index scans remain serial)
   - [x] [Ordered, bounded parallel projection](docs/01-parallel-projection.md)
   - [x] [Demand-driven LIMIT and early termination](docs/02-demand-driven-limit.md)
   - [x] [Ordered, bounded parallel filtering](docs/03-parallel-filter.md)
   - [x] [Parallel table scan decoding](docs/05-parallel-table-scan.md)
   - [x] [Parallel INNER/CROSS joins](docs/06-parallel-nested-loop-join.md)
-  - [ ] Parallel aggregation
+  - [x] [Parallel COUNT/AVG aggregation](docs/07-parallel-aggregation.md)
 - [ ] Two Phase Locking
 - [ ] Multi-Version Concurrency Control
 - [ ] Crash Recovery
@@ -31,7 +31,8 @@ P.S. See [here](tests/sqllogictest/slt) to know which sql statements are support
 
 
 ## Get started
-Read queries can opt into parallel projection, filtering and table scan decoding using `db.set_parallelism(4)?` (1–64
+Read queries can opt into parallel projection, filtering, table scan decoding, INNER/CROSS
+joins and COUNT/AVG aggregation using `db.set_parallelism(4)?` (1–64
 workers; default: 1). Results preserve input order. Page I/O, index scans and writes remain serial;
 small queries may be faster with the default. See the [projection design](docs/01-parallel-projection.md)
 and [filter design](docs/03-parallel-filter.md)

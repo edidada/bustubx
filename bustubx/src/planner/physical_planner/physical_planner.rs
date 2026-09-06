@@ -190,12 +190,15 @@ impl PhysicalPlanner<'_> {
                 schema,
             }) => {
                 let input_physical_plan = self.build_plan(Arc::clone(input));
-                PhysicalPlan::Aggregate(PhysicalAggregate::new(
-                    Arc::new(input_physical_plan),
-                    group_exprs.clone(),
-                    aggr_exprs.clone(),
-                    schema.clone(),
-                ))
+                PhysicalPlan::Aggregate(
+                    PhysicalAggregate::new(
+                        Arc::new(input_physical_plan),
+                        group_exprs.clone(),
+                        aggr_exprs.clone(),
+                        schema.clone(),
+                    )
+                    .with_parallelism(self.parallelism),
+                )
             }
             LogicalPlan::Update(Update {
                 table,
@@ -218,6 +221,32 @@ mod tests {
     use super::*;
     use crate::common::util::pretty_format_physical_plan;
     use crate::Database;
+
+    #[test]
+    fn aggregate_reinitialization_rebuilds_results() {
+        use crate::execution::{ExecutionContext, ExecutionEngine};
+        let mut db = Database::new_temp().unwrap();
+        db.run("create table t (a int)").unwrap();
+        db.run("insert into t values (1)").unwrap();
+        let logical = db.create_logical_plan("select count(a) from t").unwrap();
+        let plan = Arc::new(
+            PhysicalPlanner {
+                catalog: &db.catalog,
+                parallelism: 4,
+            }
+            .create_physical_plan(logical),
+        );
+        assert!(pretty_format_physical_plan(&plan).contains("ParallelAggregate: workers=4"));
+        for expected in [1, 2] {
+            let rows = ExecutionEngine {
+                context: ExecutionContext::new(&mut db.catalog),
+            }
+            .execute(plan.clone())
+            .unwrap();
+            assert_eq!(rows[0].data[0].to_string(), expected.to_string());
+            db.run("insert into t values (2)").unwrap();
+        }
+    }
 
     #[test]
     fn read_plans_use_parallel_expressions_and_writes_stay_serial() {

@@ -1,6 +1,6 @@
 use crate::catalog::DataType;
 use crate::common::ScalarValue;
-use crate::function::Accumulator;
+use crate::function::{Accumulator, AccumulatorState};
 use crate::{BustubxError, BustubxResult};
 
 #[derive(Debug, Clone)]
@@ -19,6 +19,28 @@ impl AvgAccumulator {
 }
 
 impl Accumulator for AvgAccumulator {
+    fn state(&self) -> AccumulatorState {
+        AccumulatorState::Avg {
+            sum: self.sum,
+            count: self.count,
+        }
+    }
+
+    fn merge(&mut self, state: AccumulatorState) -> BustubxResult<()> {
+        let AccumulatorState::Avg { sum, count } = state else {
+            return Err(BustubxError::Execution("Invalid AVG partial state".into()));
+        };
+        let new_count = self
+            .count
+            .checked_add(count)
+            .ok_or_else(|| BustubxError::Execution("AVG count overflow".into()))?;
+        if let Some(value) = sum {
+            self.sum = Some(self.sum.unwrap_or(0.0) + value);
+        }
+        self.count = new_count;
+        Ok(())
+    }
+
     fn update_value(&mut self, value: &ScalarValue) -> BustubxResult<()> {
         if !value.is_null() {
             let value = match value.cast_to(&DataType::Float64)? {
@@ -31,11 +53,10 @@ impl Accumulator for AvgAccumulator {
                 }
             };
 
-            match self.sum {
-                Some(sum) => self.sum = Some(sum + value),
-                None => self.sum = Some(value),
-            }
-            self.count += 1;
+            self.merge(AccumulatorState::Avg {
+                sum: Some(value),
+                count: 1,
+            })?;
         }
         Ok(())
     }
