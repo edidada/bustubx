@@ -616,6 +616,9 @@ impl TreeIndexIterator {
     }
 
     pub fn next(&mut self) -> BustubxResult<Option<RecordId>> {
+        if self.index.is_empty() {
+            return Ok(None);
+        }
         if self.started {
             match self.end_bound.as_ref() {
                 Bound::Included(end_tuple) => {

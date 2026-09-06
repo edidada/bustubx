@@ -281,6 +281,11 @@ impl Catalog {
             BPLUS_INTERNAL_PAGE_MAX_SIZE as u32,
             BPLUS_LEAF_PAGE_MAX_SIZE as u32,
         ));
+        let mut iterator = crate::storage::TableIterator::new(catalog_table.table.clone(), ..);
+        while let Some((rid, tuple)) = iterator.next()? {
+            let key = tuple.project_with_schema(key_schema.clone())?;
+            b_plus_tree_index.insert(&key, rid)?;
+        }
         catalog_table
             .indexes
             .insert(index_name.clone(), b_plus_tree_index.clone());
@@ -318,6 +323,31 @@ impl Catalog {
             .insert_tuple(&EMPTY_TUPLE_META, &tuple)?;
 
         Ok(b_plus_tree_index)
+    }
+
+    pub(crate) fn sync_index_roots(&self) -> BustubxResult<()> {
+        let table = self.table_heap(&TableReference::full(
+            DEFAULT_CATALOG_NAME,
+            INFORMATION_SCHEMA_NAME,
+            INFORMATION_SCHEMA_INDEXES,
+        ))?;
+        let mut iterator = crate::storage::TableIterator::new(table.clone(), ..);
+        while let Some((rid, mut tuple)) = iterator.next()? {
+            let schema = tuple.data[1].to_string();
+            let table_name = tuple.data[2].to_string();
+            let index_name = tuple.data[3].to_string();
+            if let Some(index) = self.index(
+                &TableReference::full(DEFAULT_CATALOG_NAME, schema, table_name),
+                &index_name,
+            )? {
+                let root = index.root_page_id.load(Ordering::SeqCst).into();
+                if tuple.data[7] != root {
+                    tuple.data[7] = root;
+                    table.update_tuple(rid, tuple)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn index(

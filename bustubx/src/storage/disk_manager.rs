@@ -97,6 +97,9 @@ impl DiskManager {
     }
 
     pub fn read_page(&self, page_id: PageId) -> BustubxResult<[u8; BUSTUBX_PAGE_SIZE]> {
+        if page_id == INVALID_PAGE_ID {
+            return Err(BustubxError::Storage("Cannot read invalid page ID".into()));
+        }
         let mut guard = self.db_file.lock().unwrap();
         let mut buf = [0; BUSTUBX_PAGE_SIZE];
 

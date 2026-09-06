@@ -133,6 +133,7 @@ impl Database {
     }
 
     pub fn flush(&self) -> BustubxResult<()> {
+        self.catalog.sync_index_roots()?;
         self.buffer_pool.flush_all_pages()
     }
 
