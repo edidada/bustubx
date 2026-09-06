@@ -1,4 +1,4 @@
-use super::{TransactionId, TransactionManager};
+use super::{IsolationLevel, TransactionId, TransactionManager};
 use crate::planner::logical_plan::LogicalPlan;
 use crate::{BustubxError, BustubxResult, Database, Tuple};
 
@@ -8,6 +8,8 @@ pub struct Transaction {
     pub(super) id: TransactionId,
     pub(super) database: Option<Database>,
     pub(super) dirty: bool,
+    pub(super) isolation: IsolationLevel,
+    pub(super) base_version: u64,
 }
 impl Transaction {
     pub fn id(&self) -> TransactionId {
@@ -40,7 +42,9 @@ impl Transaction {
                 | LogicalPlan::CreateIndex(_)
         );
         if write && !self.dirty {
-            if !self.manager.state.lock().unwrap().locks.exclusive(self.id) {
+            if self.isolation == IsolationLevel::Serializable
+                && !self.manager.state.lock().unwrap().locks.exclusive(self.id)
+            {
                 return Err(BustubxError::Transaction(
                     "Lock upgrade conflict; transaction aborted".into(),
                 ));
@@ -57,7 +61,20 @@ impl Transaction {
             .ok_or_else(|| BustubxError::Transaction("Transaction is no longer active".into()))?;
         let mut state = self.manager.state.lock().unwrap();
         if self.dirty {
+            if state.version != self.base_version || !state.locks.exclusive(self.id) {
+                state.locks.release(self.id);
+                return Err(BustubxError::Transaction(
+                    "Write conflict; transaction aborted".into(),
+                ));
+            }
+            let Some(version) = state.version.checked_add(1) else {
+                state.locks.release(self.id);
+                return Err(BustubxError::Transaction(
+                    "Commit versions exhausted".into(),
+                ));
+            };
             state.database = database;
+            state.version = version;
         }
         state.locks.release(self.id);
         Ok(())

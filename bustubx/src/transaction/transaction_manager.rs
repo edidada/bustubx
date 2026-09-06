@@ -7,6 +7,13 @@ pub(super) struct ManagerState {
     pub database: Database,
     pub locks: LockManager,
     pub next_id: TransactionId,
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IsolationLevel {
+    Serializable,
+    SnapshotIsolation,
 }
 
 /// Shareable transaction entry point. Use one manager for all related transactions.
@@ -21,17 +28,22 @@ impl TransactionManager {
                 database: Database::new_temp()?,
                 locks: LockManager::default(),
                 next_id: 1,
+                version: 0,
             })),
         })
     }
     /// Begin a strict two-phase-locking transaction. Lock conflicts do not wait.
     pub fn begin(&self) -> BustubxResult<Transaction> {
+        self.begin_with_isolation(IsolationLevel::Serializable)
+    }
+
+    pub fn begin_with_isolation(&self, isolation: IsolationLevel) -> BustubxResult<Transaction> {
         let mut state = self.state.lock().unwrap();
         let id = state.next_id;
         state.next_id = id
             .checked_add(1)
             .ok_or_else(|| BustubxError::Transaction("Transaction IDs exhausted".into()))?;
-        if !state.locks.shared(id) {
+        if isolation == IsolationLevel::Serializable && !state.locks.shared(id) {
             return Err(BustubxError::Transaction(
                 "Database is locked by a writer".into(),
             ));
@@ -46,6 +58,8 @@ impl TransactionManager {
                 id,
                 database: Some(database),
                 dirty: false,
+                isolation,
+                base_version: state.version,
             }),
             Err(error) => {
                 state.locks.release(id);

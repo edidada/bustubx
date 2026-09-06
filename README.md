@@ -20,7 +20,7 @@
   - [x] [Parallel INNER/CROSS joins](docs/06-parallel-nested-loop-join.md)
   - [x] [Parallel COUNT/AVG aggregation](docs/07-parallel-aggregation.md)
 - [x] [Two Phase Locking](docs/08-strict-two-phase-locking.md) (database-level S/X, no-wait)
-- [ ] Multi-Version Concurrency Control
+- [x] [Multi-Version Concurrency Control](docs/10-mvcc-snapshot-isolation.md) (whole-database snapshots, conservative write conflicts)
 - [ ] Crash Recovery
 - [ ] WASM
 
@@ -36,6 +36,8 @@ transactions. Call `tx.run(sql)?`, then `tx.commit()?`; `tx.abort()` or dropping
 transaction discards its writes. Conflicts and SQL errors abort the transaction.
 This temporary manager provides process-local commits; direct `Database::run` is
 the nontransactional API. See the [transaction design](docs/08-strict-two-phase-locking.md).
+Use `manager.begin_with_isolation(IsolationLevel::SnapshotIsolation)?` for MVCC:
+readers keep their original committed snapshot while writers commit new versions.
 
 Read queries can opt into parallel projection, filtering, table scan decoding, INNER/CROSS
 joins and COUNT/AVG aggregation using `db.set_parallelism(4)?` (1–64
