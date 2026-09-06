@@ -4,6 +4,9 @@ pub type BustubxResult<T, E = BustubxError> = Result<T, E>;
 
 #[derive(Debug, Error)]
 pub enum BustubxError {
+    #[error("Transaction error: {0}")]
+    Transaction(String),
+
     #[error("Not support: {0}")]
     NotSupport(String),
 

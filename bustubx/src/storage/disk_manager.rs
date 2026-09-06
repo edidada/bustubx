@@ -235,6 +235,14 @@ impl DiskManager {
         let meta = guard.metadata()?;
         Ok(meta.len())
     }
+
+    pub(crate) fn snapshot_bytes(&self) -> BustubxResult<Vec<u8>> {
+        let mut file = self.db_file.lock().unwrap();
+        file.seek(std::io::SeekFrom::Start(0))?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)?;
+        Ok(bytes)
+    }
 }
 
 #[cfg(test)]

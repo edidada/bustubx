@@ -1,65 +1,34 @@
-use crate::common::TableReference;
-use crate::storage::RecordId;
-use crate::transaction::{Transaction, TransactionId};
-use std::collections::HashMap;
+use super::TransactionId;
+use std::collections::HashSet;
 
-#[derive(Debug)]
-pub enum LockMode {
-    Shared,
-    Exclusive,
-    IntentionShared,
-    IntentionExclusive,
-    SharedIntentionExclusive,
+/// Database-level strict S/X locking. Protected by the manager mutex.
+#[derive(Default)]
+pub(super) struct LockManager {
+    readers: HashSet<TransactionId>,
+    writer: Option<TransactionId>,
 }
-
-pub struct LockRequest {
-    txn_id: TransactionId,
-    lock_mod: LockMode,
-    table_ref: TableReference,
-    rid: Option<RecordId>,
-    granted: bool,
-}
-
-pub struct LockManager {
-    table_lock_map: HashMap<TableReference, Vec<LockRequest>>,
-    row_lock_map: HashMap<RecordId, Vec<LockRequest>>,
-}
-
 impl LockManager {
-    pub fn lock_table(
-        &self,
-        _txn: Transaction,
-        _mode: LockMode,
-        _table_ref: TableReference,
-    ) -> bool {
-        todo!()
+    pub fn shared(&mut self, id: TransactionId) -> bool {
+        if self.writer.is_some() && self.writer != Some(id) {
+            return false;
+        }
+        self.readers.insert(id);
+        true
     }
-
-    pub fn unlock_table(&self, _txn: Transaction, _table_ref: TableReference) -> bool {
-        todo!()
+    pub fn exclusive(&mut self, id: TransactionId) -> bool {
+        if self.writer.is_some() && self.writer != Some(id) {
+            return false;
+        }
+        if self.readers.iter().any(|reader| *reader != id) {
+            return false;
+        }
+        self.writer = Some(id);
+        true
     }
-
-    pub fn lock_row(
-        &self,
-        _txn: Transaction,
-        _mode: LockMode,
-        _table_ref: TableReference,
-        _rid: RecordId,
-    ) -> bool {
-        todo!()
-    }
-
-    pub fn unlock_row(
-        &self,
-        _txn: Transaction,
-        _table_ref: TableReference,
-        _rid: RecordId,
-        _force: bool,
-    ) -> bool {
-        todo!()
-    }
-
-    pub fn unlock_all(&self) {
-        todo!()
+    pub fn release(&mut self, id: TransactionId) {
+        self.readers.remove(&id);
+        if self.writer == Some(id) {
+            self.writer = None;
+        }
     }
 }

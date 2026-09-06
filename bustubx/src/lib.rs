@@ -16,3 +16,4 @@ pub use common::util::pretty_format_tuples;
 pub use database::Database;
 pub use error::{BustubxError, BustubxResult};
 pub use storage::Tuple;
+pub use transaction::{Transaction, TransactionManager};

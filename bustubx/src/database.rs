@@ -135,4 +135,21 @@ impl Database {
     pub fn flush(&self) -> BustubxResult<()> {
         self.buffer_pool.flush_all_pages()
     }
+
+    pub(crate) fn snapshot_bytes(&self) -> BustubxResult<Vec<u8>> {
+        self.flush()?;
+        self.disk_manager.snapshot_bytes()
+    }
+
+    pub(crate) fn from_snapshot(bytes: &[u8]) -> BustubxResult<Self> {
+        let temp_dir = TempDir::new()?;
+        let path = temp_dir.path().join("snapshot.db");
+        std::fs::write(&path, bytes)?;
+        let mut db = Self::new_on_disk(
+            path.to_str()
+                .ok_or_else(|| BustubxError::Internal("Invalid snapshot path".into()))?,
+        )?;
+        db.temp_dir = Some(temp_dir);
+        Ok(db)
+    }
 }

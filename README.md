@@ -19,7 +19,7 @@
   - [x] [Parallel table scan decoding](docs/05-parallel-table-scan.md)
   - [x] [Parallel INNER/CROSS joins](docs/06-parallel-nested-loop-join.md)
   - [x] [Parallel COUNT/AVG aggregation](docs/07-parallel-aggregation.md)
-- [ ] Two Phase Locking
+- [x] [Two Phase Locking](docs/08-strict-two-phase-locking.md) (database-level S/X, no-wait)
 - [ ] Multi-Version Concurrency Control
 - [ ] Crash Recovery
 - [ ] WASM
@@ -31,6 +31,12 @@ P.S. See [here](tests/sqllogictest/slt) to know which sql statements are support
 
 
 ## Get started
+Use `TransactionManager::new_temp()?` and `manager.begin()?` for strict 2PL SQL
+transactions. Call `tx.run(sql)?`, then `tx.commit()?`; `tx.abort()` or dropping the
+transaction discards its writes. Conflicts and SQL errors abort the transaction.
+This temporary manager provides process-local commits; direct `Database::run` is
+the nontransactional API. See the [transaction design](docs/08-strict-two-phase-locking.md).
+
 Read queries can opt into parallel projection, filtering, table scan decoding, INNER/CROSS
 joins and COUNT/AVG aggregation using `db.set_parallelism(4)?` (1–64
 workers; default: 1). Results preserve input order. Page I/O, index scans and writes remain serial;
