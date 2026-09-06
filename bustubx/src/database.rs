@@ -70,7 +70,7 @@ impl Database {
         Ok(db)
     }
 
-    /// Set the number of projection workers for subsequent read queries (1..=64).
+    /// Set the number of projection/filter workers for subsequent read queries (1..=64).
     /// The default is 1. Scans and writes remain serial.
     pub fn set_parallelism(&mut self, workers: usize) -> BustubxResult<()> {
         if !(1..=64).contains(&workers) {

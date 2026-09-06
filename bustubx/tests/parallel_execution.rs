@@ -18,6 +18,12 @@ fn parallel_sql_matches_serial_across_batches_and_operators() {
 
     for sql in [
         "select a > b from l, r",
+        "select a, b from l, r where a >= 30",
+        "select a, b from l, r where a > 50",
+        "select a, b from l, r where a >= 30 limit 17 offset 3",
+        "select a, b from l, r where a >= 30 order by a desc, b",
+        "select count(a) from l, r where a >= 30",
+        "select a, b from l, (select b from r where b >= 5)",
         "select a, b from l, (select b from r)",
         "select a from l where a > 12 order by a desc limit 9 offset 3",
         "select count(a) from l, r",

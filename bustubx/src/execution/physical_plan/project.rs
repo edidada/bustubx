@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use crate::catalog::SchemaRef;
-use crate::execution::parallel::ordered_map;
+use crate::execution::parallel::{ordered_map, BATCH_SIZE};
 use crate::expression::{Expr, ExprTrait};
 use crate::{
     execution::{ExecutionContext, VolcanoExecutor},
@@ -11,8 +11,6 @@ use crate::{
 };
 
 use super::PhysicalPlan;
-
-const BATCH_SIZE: usize = 1024;
 
 #[derive(Debug, Default)]
 struct ProjectState {

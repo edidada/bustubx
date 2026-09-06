@@ -1,5 +1,7 @@
 use crate::{BustubxError, BustubxResult};
 
+pub(super) const BATCH_SIZE: usize = 1024;
+
 /// Evaluate contiguous partitions concurrently and gather in input order.
 /// Every worker is joined, including when spawning or evaluation fails.
 pub(super) fn ordered_map<T: Sync, R: Send>(
@@ -21,14 +23,14 @@ pub(super) fn ordered_map<T: Sync, R: Send>(
         for chunk in input.chunks(chunk_size) {
             let evaluate = &evaluate;
             match std::thread::Builder::new()
-                .name("bustubx-project".into())
+                .name("bustubx-execution".into())
                 .spawn_scoped(scope, move || {
                     chunk.iter().map(evaluate).collect::<Vec<R>>()
                 }) {
                 Ok(handle) => handles.push(handle),
                 Err(error) => {
                     failure = Some(BustubxError::Execution(format!(
-                        "Cannot start projection worker: {error}"
+                        "Cannot start execution worker: {error}"
                     )));
                     break;
                 }
@@ -39,7 +41,7 @@ pub(super) fn ordered_map<T: Sync, R: Send>(
             match handle.join() {
                 Ok(rows) => output.extend(rows),
                 Err(_) => {
-                    failure = Some(BustubxError::Execution("Projection worker panicked".into()));
+                    failure = Some(BustubxError::Execution("Execution worker panicked".into()));
                 }
             }
         }

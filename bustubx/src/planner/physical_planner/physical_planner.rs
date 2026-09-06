@@ -92,10 +92,10 @@ impl PhysicalPlanner<'_> {
             }
             LogicalPlan::Filter(Filter { predicate, input }) => {
                 let input_physical_plan = self.build_plan(input.clone());
-                PhysicalPlan::Filter(PhysicalFilter::new(
-                    predicate.clone(),
-                    Arc::new(input_physical_plan),
-                ))
+                PhysicalPlan::Filter(
+                    PhysicalFilter::new(predicate.clone(), Arc::new(input_physical_plan))
+                        .with_parallelism(self.parallelism),
+                )
             }
             LogicalPlan::TableScan(TableScan {
                 table_ref,
@@ -207,5 +207,37 @@ impl PhysicalPlanner<'_> {
             )),
         };
         plan
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::util::pretty_format_physical_plan;
+    use crate::Database;
+
+    #[test]
+    fn read_plans_use_parallel_expressions_and_writes_stay_serial() {
+        let mut db = Database::new_temp().unwrap();
+        db.run("create table t (a int)").unwrap();
+        db.run("create table copied (a int)").unwrap();
+        for sql in [
+            "select a from t where a > 1",
+            "insert into copied select a from t where a > 1",
+        ] {
+            let logical = db.create_logical_plan(sql).unwrap();
+            let plan = PhysicalPlanner {
+                catalog: &db.catalog,
+                parallelism: 4,
+            }
+            .create_physical_plan(logical);
+            let display = pretty_format_physical_plan(&plan);
+            if sql.starts_with("select") {
+                assert!(display.contains("ParallelFilter: workers=4"), "{display}");
+                assert!(display.contains("ParallelProject: workers=4"), "{display}");
+            } else {
+                assert!(!display.contains("Parallel"), "{display}");
+            }
+        }
     }
 }
