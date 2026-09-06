@@ -20,10 +20,24 @@ use crate::execution::physical_plan::{PhysicalInsert, PhysicalUpdate};
 
 pub struct PhysicalPlanner<'a> {
     pub catalog: &'a Catalog,
+    pub parallelism: usize,
 }
 
 impl PhysicalPlanner<'_> {
     pub fn create_physical_plan(&self, logical_plan: LogicalPlan) -> PhysicalPlan {
+        if matches!(
+            logical_plan,
+            LogicalPlan::Insert(_)
+                | LogicalPlan::Update(_)
+                | LogicalPlan::CreateTable(_)
+                | LogicalPlan::CreateIndex(_)
+        ) {
+            return Self {
+                catalog: self.catalog,
+                parallelism: 1,
+            }
+            .build_plan(Arc::new(logical_plan));
+        }
         let logical_plan = Arc::new(logical_plan);
         self.build_plan(logical_plan)
     }
@@ -67,11 +81,14 @@ impl PhysicalPlanner<'_> {
                 schema,
             }) => {
                 let input_physical_plan = self.build_plan(input.clone());
-                PhysicalPlan::Project(PhysicalProject::new(
-                    exprs.clone(),
-                    schema.clone(),
-                    Arc::new(input_physical_plan),
-                ))
+                PhysicalPlan::Project(
+                    PhysicalProject::new(
+                        exprs.clone(),
+                        schema.clone(),
+                        Arc::new(input_physical_plan),
+                    )
+                    .with_parallelism(self.parallelism),
+                )
             }
             LogicalPlan::Filter(Filter { predicate, input }) => {
                 let input_physical_plan = self.build_plan(input.clone());

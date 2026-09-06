@@ -14,7 +14,12 @@ impl Default for BustubxDB {
 
 impl BustubxDB {
     pub fn new() -> Self {
-        let db = Database::new_temp().unwrap();
+        Self::with_parallelism(1)
+    }
+
+    pub fn with_parallelism(workers: usize) -> Self {
+        let mut db = Database::new_temp().unwrap();
+        db.set_parallelism(workers).unwrap();
         Self { db }
     }
 }

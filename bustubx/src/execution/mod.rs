@@ -1,3 +1,4 @@
+mod parallel;
 pub mod physical_plan;
 
 use std::sync::Arc;

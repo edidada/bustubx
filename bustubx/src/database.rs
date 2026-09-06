@@ -22,6 +22,7 @@ pub struct Database {
     pub(crate) buffer_pool: Arc<BufferPoolManager>,
     pub(crate) catalog: Catalog,
     temp_dir: Option<TempDir>,
+    parallelism: usize,
 }
 impl Database {
     pub fn new_on_disk(db_path: &str) -> BustubxResult<Self> {
@@ -38,6 +39,7 @@ impl Database {
             buffer_pool,
             catalog,
             temp_dir: None,
+            parallelism: 1,
         };
         load_catalog_data(&mut db)?;
         Ok(db)
@@ -62,9 +64,22 @@ impl Database {
             buffer_pool,
             catalog,
             temp_dir: Some(temp_dir),
+            parallelism: 1,
         };
         load_catalog_data(&mut db)?;
         Ok(db)
+    }
+
+    /// Set the number of projection workers for subsequent read queries (1..=64).
+    /// The default is 1. Scans and writes remain serial.
+    pub fn set_parallelism(&mut self, workers: usize) -> BustubxResult<()> {
+        if !(1..=64).contains(&workers) {
+            return Err(BustubxError::Execution(
+                "Parallelism must be between 1 and 64".into(),
+            ));
+        }
+        self.parallelism = workers;
+        Ok(())
     }
 
     pub fn run(&mut self, sql: &str) -> BustubxResult<Vec<Tuple>> {
@@ -83,6 +98,7 @@ impl Database {
         // logical plan -> physical plan
         let physical_planner = PhysicalPlanner {
             catalog: &self.catalog,
+            parallelism: self.parallelism,
         };
         let physical_plan = physical_planner.create_physical_plan(optimized_logical_plan);
         debug!(

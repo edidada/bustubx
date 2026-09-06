@@ -6,12 +6,16 @@ fn sqllogictest() {
     let test_files = read_dir_recursive("slt/");
     println!("test_files: {:?}", test_files);
 
-    for file in test_files {
-        let db = BustubxDB::new();
+    for (file, workers) in test_files
+        .iter()
+        .flat_map(|file| [1, 4].map(|workers| (file, workers)))
+    {
+        let db = BustubxDB::with_parallelism(workers);
         let mut tester = sqllogictest::Runner::new(db);
         println!(
-            "======== start to run file {} ========",
-            file.to_str().unwrap()
+            "======== start to run file {} with {} workers ========",
+            file.to_str().unwrap(),
+            workers
         );
         tester.run_file(file).unwrap();
     }

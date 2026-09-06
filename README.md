@@ -13,6 +13,8 @@
 - [x] System Metadata (information_schema)
 - [x] B+ Tree Index
 - [ ] Parallel Execution
+  - [x] [Ordered, bounded parallel projection](docs/01-parallel-projection.md)
+  - [ ] Parallel scans, joins and aggregation
 - [ ] Two Phase Locking
 - [ ] Multi-Version Concurrency Control
 - [ ] Crash Recovery
@@ -25,6 +27,11 @@ P.S. See [here](tests/sqllogictest/slt) to know which sql statements are support
 
 
 ## Get started
+Read queries can opt into parallel projection using `db.set_parallelism(4)?` (1–64
+workers; default: 1). Results preserve input order. Scans and writes remain serial;
+small queries may be faster with the default. See the [design](docs/01-parallel-projection.md)
+for batching, error handling and current limitations.
+
 Install rust toolchain first.
 ```
 RUST_LOG=info,bustubx=debug cargo run --bin bustubx-cli
