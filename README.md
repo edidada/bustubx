@@ -14,6 +14,7 @@
 - [x] B+ Tree Index
 - [ ] Parallel Execution
   - [x] [Ordered, bounded parallel projection](docs/01-parallel-projection.md)
+  - [x] [Demand-driven LIMIT and early termination](docs/02-demand-driven-limit.md)
   - [ ] Parallel scans, joins and aggregation
 - [ ] Two Phase Locking
 - [ ] Multi-Version Concurrency Control
