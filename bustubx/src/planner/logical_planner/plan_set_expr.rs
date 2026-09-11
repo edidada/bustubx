@@ -199,13 +199,13 @@ impl LogicalPlanner<'_> {
                 self.plan_join(left, right, constraint, JoinType::Inner)
             }
             sqlparser::ast::JoinOperator::LeftOuter(constraint) => {
-                self.plan_join(left, right, constraint, JoinType::Inner)
+                self.plan_join(left, right, constraint, JoinType::LeftOuter)
             }
             sqlparser::ast::JoinOperator::RightOuter(constraint) => {
-                self.plan_join(left, right, constraint, JoinType::Inner)
+                self.plan_join(left, right, constraint, JoinType::RightOuter)
             }
             sqlparser::ast::JoinOperator::FullOuter(constraint) => {
-                self.plan_join(left, right, constraint, JoinType::Inner)
+                self.plan_join(left, right, constraint, JoinType::FullOuter)
             }
             sqlparser::ast::JoinOperator::CrossJoin => self.plan_cross_join(left, right),
             _ => Err(BustubxError::Plan(format!(
@@ -306,5 +306,49 @@ impl LogicalPlanner<'_> {
             schema: Arc::new(Schema::empty()),
             values: result,
         }))
+    }
+}
+
+#[cfg(test)]
+mod outer_join_tests {
+    use crate::planner::logical_plan::{JoinType, LogicalPlan};
+    use crate::Database;
+
+    #[test]
+    fn planner_preserves_outer_join_types_and_nullable_sides() {
+        let mut db = Database::new_temp().unwrap();
+        db.run("create table l (a int not null)").unwrap();
+        db.run("create table r (b int not null)").unwrap();
+        for (sql, expected, left_nullable, right_nullable) in [
+            (
+                "select * from l left join r on l.a = r.b",
+                JoinType::LeftOuter,
+                false,
+                true,
+            ),
+            (
+                "select * from l right join r on l.a = r.b",
+                JoinType::RightOuter,
+                true,
+                false,
+            ),
+            (
+                "select * from l full outer join r on l.a = r.b",
+                JoinType::FullOuter,
+                true,
+                true,
+            ),
+        ] {
+            let plan = db.create_logical_plan(sql).unwrap();
+            let LogicalPlan::Project(project) = plan else {
+                panic!("expected project")
+            };
+            let LogicalPlan::Join(join) = project.input.as_ref() else {
+                panic!("expected join")
+            };
+            assert_eq!(join.join_type, expected);
+            assert_eq!(join.schema.columns[0].nullable, left_nullable);
+            assert_eq!(join.schema.columns[1].nullable, right_nullable);
+        }
     }
 }

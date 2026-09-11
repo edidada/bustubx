@@ -18,6 +18,7 @@
   - [x] [Ordered, bounded parallel filtering](docs/03-parallel-filter.md)
   - [x] [Parallel table scan decoding](docs/05-parallel-table-scan.md)
   - [x] [Parallel INNER/CROSS joins](docs/06-parallel-nested-loop-join.md)
+  - [x] [LEFT/RIGHT/FULL OUTER joins](docs/13-outer-joins.md)
   - [x] [Parallel COUNT/AVG aggregation](docs/07-parallel-aggregation.md)
 - [x] [Two Phase Locking](docs/08-strict-two-phase-locking.md) (database-level S/X, no-wait)
 - [x] [Multi-Version Concurrency Control](docs/10-mvcc-snapshot-isolation.md) (whole-database snapshots, conservative write conflicts)
@@ -45,7 +46,7 @@ Use `TransactionManager::new_on_disk("database.journal")?` for durable commits a
 automatic recovery after process crashes. Its journal format differs from raw
 `Database` page files; see the [recovery design](docs/11-crash-recovery.md).
 
-Read queries can opt into parallel projection, filtering, table scan decoding, INNER/CROSS
+Read queries can opt into parallel projection, filtering, table scan decoding, all supported
 joins and COUNT/AVG aggregation using `db.set_parallelism(4)?` (1–64
 workers; default: 1). Results preserve input order. Page I/O, index scans and writes remain serial;
 small queries may be faster with the default. See the [projection design](docs/01-parallel-projection.md)

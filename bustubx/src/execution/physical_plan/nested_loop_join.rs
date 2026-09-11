@@ -6,7 +6,7 @@ use crate::execution::{ExecutionContext, VolcanoExecutor};
 use crate::expression::{Expr, ExprTrait};
 use crate::planner::logical_plan::JoinType;
 use crate::{BustubxError, BustubxResult, Tuple};
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Default)]
@@ -14,6 +14,10 @@ struct JoinState {
     left: Option<Tuple>,
     right_finished: bool,
     exhausted: bool,
+    current_left_matched: bool,
+    right_ordinal: usize,
+    matched_right: HashSet<usize>,
+    emitting_unmatched_right: bool,
     pending: VecDeque<BustubxResult<Tuple>>,
 }
 
@@ -50,8 +54,33 @@ impl PhysicalNestedLoopJoin {
         self.parallelism = workers.clamp(1, 64);
         self
     }
+    fn combine(&self, left: Option<&Tuple>, right: Option<&Tuple>) -> Tuple {
+        let mut data = Vec::with_capacity(self.schema.column_count());
+        match left {
+            Some(tuple) => data.extend(tuple.data.iter().cloned()),
+            None => data.extend(
+                self.left_input
+                    .output_schema()
+                    .columns
+                    .iter()
+                    .map(|column| ScalarValue::new_empty(column.data_type)),
+            ),
+        }
+        match right {
+            Some(tuple) => data.extend(tuple.data.iter().cloned()),
+            None => data.extend(
+                self.right_input
+                    .output_schema()
+                    .columns
+                    .iter()
+                    .map(|column| ScalarValue::new_empty(column.data_type)),
+            ),
+        }
+        Tuple::new(self.schema.clone(), data)
+    }
+
     fn join(&self, left: &Tuple, right: &Tuple) -> BustubxResult<Option<Tuple>> {
-        let tuple = Tuple::try_merge([left.clone(), right.clone()])?;
+        let tuple = self.combine(Some(left), Some(right));
         if let Some(condition) = &self.condition {
             match condition.evaluate(&tuple)? {
                 ScalarValue::Boolean(Some(true)) => {}
@@ -65,14 +94,17 @@ impl PhysicalNestedLoopJoin {
         }
         Ok(Some(tuple))
     }
+
+    fn preserves_left(&self) -> bool {
+        matches!(self.join_type, JoinType::LeftOuter | JoinType::FullOuter)
+    }
+
+    fn preserves_right(&self) -> bool {
+        matches!(self.join_type, JoinType::RightOuter | JoinType::FullOuter)
+    }
 }
 impl VolcanoExecutor for PhysicalNestedLoopJoin {
     fn init(&self, context: &mut ExecutionContext) -> BustubxResult<()> {
-        if !matches!(self.join_type, JoinType::Inner | JoinType::Cross) {
-            return Err(BustubxError::NotSupport(
-                "Outer join execution is not implemented".into(),
-            ));
-        }
         *self.state.lock().unwrap() = JoinState::default();
         self.left_input.init(context)?;
         self.right_input.init(context)
@@ -86,22 +118,66 @@ impl VolcanoExecutor for PhysicalNestedLoopJoin {
             if state.exhausted {
                 return Ok(None);
             }
-            if state.left.is_none() || state.right_finished {
+
+            if state.emitting_unmatched_right {
+                match self.right_input.next(context) {
+                    Ok(Some(right)) => {
+                        let ordinal = state.right_ordinal;
+                        state.right_ordinal += 1;
+                        if !state.matched_right.contains(&ordinal) {
+                            return Ok(Some(self.combine(None, Some(&right))));
+                        }
+                    }
+                    Ok(None) => {
+                        state.exhausted = true;
+                        return Ok(None);
+                    }
+                    Err(error) => {
+                        state.exhausted = true;
+                        return Err(error);
+                    }
+                }
+                continue;
+            }
+
+            if state.right_finished {
+                let unmatched_left = self.preserves_left() && !state.current_left_matched;
+                let left = state.left.take();
+                state.current_left_matched = false;
+                state.right_ordinal = 0;
+                state.right_finished = false;
+                self.right_input.init(context)?;
+                if unmatched_left {
+                    state
+                        .pending
+                        .push_back(Ok(self.combine(left.as_ref(), None)));
+                    continue;
+                }
+            }
+
+            if state.left.is_none() {
                 state.left = self.left_input.next(context)?;
                 if state.left.is_none() {
+                    if self.preserves_right() {
+                        self.right_input.init(context)?;
+                        state.emitting_unmatched_right = true;
+                        state.right_ordinal = 0;
+                        continue;
+                    }
                     state.exhausted = true;
                     return Ok(None);
                 }
-                if state.right_finished {
-                    self.right_input.init(context)?;
-                }
-                state.right_finished = false;
             }
+
             let mut batch = Vec::new();
             let mut failure = None;
+            let first_ordinal = state.right_ordinal;
             for _ in 0..if self.parallelism > 1 { BATCH_SIZE } else { 1 } {
                 match self.right_input.next(context) {
-                    Ok(Some(row)) => batch.push(row),
+                    Ok(Some(row)) => {
+                        batch.push(row);
+                        state.right_ordinal += 1;
+                    }
                     Ok(None) => {
                         state.right_finished = true;
                         break;
@@ -113,12 +189,16 @@ impl VolcanoExecutor for PhysicalNestedLoopJoin {
                     }
                 }
             }
-            let left = state.left.as_ref().unwrap();
-            match ordered_map(&batch, self.parallelism, |right| self.join(left, right)) {
+            let left = state.left.as_ref().unwrap().clone();
+            match ordered_map(&batch, self.parallelism, |right| self.join(&left, right)) {
                 Ok(rows) => {
-                    for row in rows {
+                    for (index, row) in rows.into_iter().enumerate() {
                         match row {
-                            Ok(Some(tuple)) => state.pending.push_back(Ok(tuple)),
+                            Ok(Some(tuple)) => {
+                                state.current_left_matched = true;
+                                state.matched_right.insert(first_ordinal + index);
+                                state.pending.push_back(Ok(tuple));
+                            }
                             Ok(None) => {}
                             Err(error) => state.pending.push_back(Err(error)),
                         }
@@ -207,10 +287,25 @@ mod tests {
                 Err(BustubxError::Execution(_))
             ));
             join.join_type = JoinType::LeftOuter;
-            assert!(matches!(
-                join.init(&mut context),
-                Err(BustubxError::NotSupport(_))
-            ));
+            join.schema = Arc::new(
+                crate::planner::logical_plan::build_join_schema(
+                    &join.left_input.output_schema(),
+                    &join.right_input.output_schema(),
+                    JoinType::LeftOuter,
+                )
+                .unwrap(),
+            );
+            join.condition = Some(Expr::Literal(Literal {
+                value: ScalarValue::Boolean(false.into()),
+            }));
+            join.init(&mut context).unwrap();
+            for value in [1, 2] {
+                let row = join.next(&mut context).unwrap().unwrap();
+                assert_eq!(row.data[0], ScalarValue::Int32(Some(value)));
+                assert!(row.data[1].is_null());
+                assert!(row.schema.columns[1].nullable);
+            }
+            assert!(join.next(&mut context).unwrap().is_none());
         }
     }
 }

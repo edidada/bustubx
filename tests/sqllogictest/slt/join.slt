@@ -36,3 +36,62 @@ query IIII rowsort
 select * from t3 inner join t4 on t3.a > t4.a
 ----
 5 6 3 4
+
+statement ok
+create table outer_left (id int, value int)
+
+statement ok
+create table outer_right (id int, value int)
+
+statement ok
+insert into outer_left values (1, 10), (2, 20), (2, 21), (4, 40)
+
+statement ok
+insert into outer_right values (2, 200), (2, 201), (3, 300), (3, 300)
+
+query IIII rowsort
+select outer_left.id, outer_left.value, outer_right.id, outer_right.value
+from outer_left left join outer_right on outer_left.id = outer_right.id
+----
+1 10 NULL NULL
+2 20 2 200
+2 20 2 201
+2 21 2 200
+2 21 2 201
+4 40 NULL NULL
+
+query IIII rowsort
+select outer_left.id, outer_left.value, outer_right.id, outer_right.value
+from outer_left right join outer_right on outer_left.id = outer_right.id
+----
+2 20 2 200
+2 20 2 201
+2 21 2 200
+2 21 2 201
+NULL NULL 3 300
+NULL NULL 3 300
+
+query IIII rowsort
+select outer_left.id, outer_left.value, outer_right.id, outer_right.value
+from outer_left full outer join outer_right on outer_left.id = outer_right.id
+----
+1 10 NULL NULL
+2 20 2 200
+2 20 2 201
+2 21 2 200
+2 21 2 201
+4 40 NULL NULL
+NULL NULL 3 300
+NULL NULL 3 300
+
+statement ok
+create table outer_empty (id int)
+
+query III rowsort
+select outer_empty.id, outer_right.id, outer_right.value
+from outer_empty full outer join outer_right on outer_empty.id = outer_right.id
+----
+NULL 2 200
+NULL 2 201
+NULL 3 300
+NULL 3 300
