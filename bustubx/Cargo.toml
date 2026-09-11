@@ -17,7 +17,6 @@ doctest = false
 sqlparser = "0.34.0"
 lazy_static = "1.4.0"
 itertools = "0.11.0"
-comfy-table = "7.0.1"
 derive-new = "0.5.9"
 log = "0.4.19"
 thiserror = "1.0.56"
@@ -25,3 +24,9 @@ tempfile = "3"
 derive-with = "0.5.0"
 strum = { version = "0.26", features = ["derive"]}
 dashmap = "5.5.3"
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+comfy-table = "7.0.1"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+comfy-table = { version = "7.0.1", default-features = false }

@@ -73,6 +73,11 @@ impl Database {
     /// Set the number of read execution workers (1..=64; default: 1).
     /// Table scans decode pages in parallel; page I/O and writes remain serial.
     pub fn set_parallelism(&mut self, workers: usize) -> BustubxResult<()> {
+        if cfg!(target_family = "wasm") && workers != 1 {
+            return Err(BustubxError::NotSupport(
+                "WASM execution requires parallelism=1".into(),
+            ));
+        }
         if !(1..=64).contains(&workers) {
             return Err(BustubxError::Execution(
                 "Parallelism must be between 1 and 64".into(),

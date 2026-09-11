@@ -22,9 +22,12 @@
 - [x] [Two Phase Locking](docs/08-strict-two-phase-locking.md) (database-level S/X, no-wait)
 - [x] [Multi-Version Concurrency Control](docs/10-mvcc-snapshot-isolation.md) (whole-database snapshots, conservative write conflicts)
 - [x] [Crash Recovery](docs/11-crash-recovery.md) (checksummed full-image commit journal)
-- [ ] WASM
+- [x] [WASM](docs/12-wasm-wasi.md) (WASI Preview 1 SQL command; single-threaded)
 
 P.S. See [here](tests/sqllogictest/slt) to know which sql statements are supported already.
+These checkmarks describe the implemented educational scope, not complete SQL or
+production database support. Transaction locking/versioning is database-wide;
+the durable journal stores complete snapshots, and WASM targets WASI rather than browsers.
 
 ## Architecture
 ![architecture](./docs/bustubx-architecture.png)
@@ -55,6 +58,28 @@ RUST_LOG=info,bustubx=debug cargo run --bin bustubx-cli
 ```
 
 ![demo](./docs/bustubx-demo.png)
+
+## WASI
+
+Build with Rust and run with Node.js 22 or later:
+
+```text
+rustup target add wasm32-wasip1
+cargo build -p bustubx-wasm --target wasm32-wasip1 --release
+node scripts/run-wasi.mjs
+```
+
+Enter one SQL statement per line. The default database is `target/wasi-data/database.db`.
+To select a data directory, pass the WASM artifact path followed by that directory:
+
+```text
+node scripts/run-wasi.mjs target/wasm32-wasip1/release/bustubx-wasm.wasm path/to/data
+node scripts/test-wasi.mjs
+```
+
+The WASI runner uses the nontransactional page-file API; native transaction journal
+locking and parallel threads are unavailable on this target. See the
+[WASI design](docs/12-wasm-wasi.md) for behavior and limitations.
 
 ## Reference
 - [CMU 15-445/645 Database Systems](https://15445.courses.cs.cmu.edu/fall2022/)

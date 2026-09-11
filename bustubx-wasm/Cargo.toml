@@ -1,0 +1,9 @@
+[package]
+name = "bustubx-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WASI command runner for BustubX SQL"
+
+[dependencies]
+bustubx = { path = "../bustubx" }

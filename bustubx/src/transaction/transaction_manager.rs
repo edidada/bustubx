@@ -38,6 +38,11 @@ impl TransactionManager {
 
     /// Open a durable full-image transaction journal (not a raw Database page file).
     pub fn new_on_disk(path: impl AsRef<std::path::Path>) -> BustubxResult<Self> {
+        if cfg!(target_family = "wasm") {
+            return Err(BustubxError::NotSupport(
+                "Durable transaction journals require native file locking".into(),
+            ));
+        }
         let (mut journal, snapshot) = Journal::open(path)?;
         let (version, database) = match snapshot {
             Some((version, bytes)) => (version, Database::from_snapshot(&bytes)?),

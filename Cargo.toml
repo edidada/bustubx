@@ -2,6 +2,7 @@
 members = [
     "bustubx",
     "bustubx-cli",
+    "bustubx-wasm",
     "tests/sqllogictest",
 ]
 resolver = "2"
