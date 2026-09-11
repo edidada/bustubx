@@ -53,13 +53,19 @@ impl Transaction {
         }
         db.run(sql)
     }
-    /// Publish all writes atomically within this process, then release all locks.
+    /// Persist writes for an on-disk manager, publish the version, and release locks.
     pub fn commit(&mut self) -> BustubxResult<()> {
         let database = self
             .database
             .take()
             .ok_or_else(|| BustubxError::Transaction("Transaction is no longer active".into()))?;
         let mut state = self.manager.state.lock().unwrap();
+        if let Some(journal) = &state.journal {
+            if let Err(error) = journal.ensure_usable() {
+                state.locks.release(self.id);
+                return Err(error);
+            }
+        }
         if self.dirty {
             if state.version != self.base_version || !state.locks.exclusive(self.id) {
                 state.locks.release(self.id);
@@ -73,6 +79,15 @@ impl Transaction {
                     "Commit versions exhausted".into(),
                 ));
             };
+            if let Some(journal) = &mut state.journal {
+                if let Err(error) = database
+                    .snapshot_bytes()
+                    .and_then(|bytes| journal.append(version, &bytes))
+                {
+                    state.locks.release(self.id);
+                    return Err(error);
+                }
+            }
             state.database = database;
             state.version = version;
         }

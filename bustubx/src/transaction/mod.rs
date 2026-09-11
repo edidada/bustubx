@@ -1,4 +1,5 @@
 mod lock_manager;
+mod recovery;
 mod transaction;
 mod transaction_manager;
 

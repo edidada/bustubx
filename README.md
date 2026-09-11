@@ -21,7 +21,7 @@
   - [x] [Parallel COUNT/AVG aggregation](docs/07-parallel-aggregation.md)
 - [x] [Two Phase Locking](docs/08-strict-two-phase-locking.md) (database-level S/X, no-wait)
 - [x] [Multi-Version Concurrency Control](docs/10-mvcc-snapshot-isolation.md) (whole-database snapshots, conservative write conflicts)
-- [ ] Crash Recovery
+- [x] [Crash Recovery](docs/11-crash-recovery.md) (checksummed full-image commit journal)
 - [ ] WASM
 
 P.S. See [here](tests/sqllogictest/slt) to know which sql statements are supported already.
@@ -38,6 +38,9 @@ This temporary manager provides process-local commits; direct `Database::run` is
 the nontransactional API. See the [transaction design](docs/08-strict-two-phase-locking.md).
 Use `manager.begin_with_isolation(IsolationLevel::SnapshotIsolation)?` for MVCC:
 readers keep their original committed snapshot while writers commit new versions.
+Use `TransactionManager::new_on_disk("database.journal")?` for durable commits and
+automatic recovery after process crashes. Its journal format differs from raw
+`Database` page files; see the [recovery design](docs/11-crash-recovery.md).
 
 Read queries can opt into parallel projection, filtering, table scan decoding, INNER/CROSS
 joins and COUNT/AVG aggregation using `db.set_parallelism(4)?` (1–64

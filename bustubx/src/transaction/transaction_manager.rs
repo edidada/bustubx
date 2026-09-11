@@ -1,4 +1,5 @@
 use super::lock_manager::LockManager;
+use super::recovery::Journal;
 use super::{Transaction, TransactionId};
 use crate::{BustubxError, BustubxResult, Database};
 use std::sync::{Arc, Mutex};
@@ -8,6 +9,7 @@ pub(super) struct ManagerState {
     pub locks: LockManager,
     pub next_id: TransactionId,
     pub version: u64,
+    pub journal: Option<Journal>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +31,29 @@ impl TransactionManager {
                 locks: LockManager::default(),
                 next_id: 1,
                 version: 0,
+                journal: None,
+            })),
+        })
+    }
+
+    /// Open a durable full-image transaction journal (not a raw Database page file).
+    pub fn new_on_disk(path: impl AsRef<std::path::Path>) -> BustubxResult<Self> {
+        let (mut journal, snapshot) = Journal::open(path)?;
+        let (version, database) = match snapshot {
+            Some((version, bytes)) => (version, Database::from_snapshot(&bytes)?),
+            None => {
+                let database = Database::new_temp()?;
+                journal.append(0, &database.snapshot_bytes()?)?;
+                (0, database)
+            }
+        };
+        Ok(Self {
+            state: Arc::new(Mutex::new(ManagerState {
+                database,
+                locks: LockManager::default(),
+                next_id: 1,
+                version,
+                journal: Some(journal),
             })),
         })
     }
@@ -39,6 +64,9 @@ impl TransactionManager {
 
     pub fn begin_with_isolation(&self, isolation: IsolationLevel) -> BustubxResult<Transaction> {
         let mut state = self.state.lock().unwrap();
+        if let Some(journal) = &state.journal {
+            journal.ensure_usable()?;
+        }
         let id = state.next_id;
         state.next_id = id
             .checked_add(1)
